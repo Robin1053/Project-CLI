@@ -1,0 +1,14 @@
+{
+  "name": "test",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --watch src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.7.0"
+  }
+}
