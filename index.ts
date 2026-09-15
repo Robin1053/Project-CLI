@@ -41,6 +41,10 @@ const STACKS: Stack[] = [
 // 2. Remote-Provider
 //    Beide Provider erfüllen dasselbe Interface. Der Rest des Programms
 //    weiß nicht, ob es GitHub oder Gitea ist.
+//
+//    Hinweis: ausgeschriebene Konstruktoren statt "private x: string" im
+//    Parameter — Node führt TypeScript nur im Strip-Only-Modus aus und
+//    kann Parameter Properties nicht umschreiben.
 // ---------------------------------------------------------------------------
 
 interface RemoteProvider {
@@ -57,7 +61,23 @@ class GiteaProvider implements RemoteProvider {
   }
 
   async createRepo(name: string, isPrivate: boolean): Promise<string> {
-    // unverändert
+    const res = await fetch(`${this.baseUrl}/api/v1/user/repos`, {
+      method: "POST",
+      headers: {
+        Authorization: `token ${this.token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      // auto_init: false -> leeres Repo, sonst scheitert der Push
+      body: JSON.stringify({ name, private: isPrivate, auto_init: false }),
+    });
+
+    if (res.status === 409)
+      throw new Error(`Repo "${name}" existiert bereits.`);
+    if (!res.ok) throw new Error(`Gitea ${res.status}: ${await res.text()}`);
+
+    const repo = (await res.json()) as { clone_url: string };
+    return repo.clone_url;
   }
 }
 
@@ -69,7 +89,25 @@ class GitHubProvider implements RemoteProvider {
   }
 
   async createRepo(name: string, isPrivate: boolean): Promise<string> {
-    // unverändert
+    const res = await fetch("https://api.github.com/user/repos", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2026-03-10",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, private: isPrivate, auto_init: false }),
+    });
+
+    // GitHub liefert 422 sowohl bei Namenskollision als auch bei Validierungsfehlern
+    if (res.status === 422) {
+      throw new Error(`Repo "${name}" existiert wohl schon.`);
+    }
+    if (!res.ok) throw new Error(`GitHub ${res.status}: ${await res.text()}`);
+
+    const repo = (await res.json()) as { clone_url: string };
+    return repo.clone_url;
   }
 }
 
@@ -86,12 +124,7 @@ async function scaffold(stack: Stack, targetDir: string, name: string) {
   }
 
   if (stack.template) {
-    const src = path.join(
-      import.meta.dirname,
-      "..",
-      "templates",
-      stack.template,
-    );
+    const src = path.join(import.meta.dirname, "templates", stack.template);
     await fs.cp(src, targetDir, { recursive: true });
     await replacePlaceholders(targetDir, { projectName: name });
     return;
@@ -148,7 +181,7 @@ async function run(nameArg: string | undefined, opts: { private?: boolean }) {
     nameArg ??
     (await p.text({
       message: "Wie soll das Projekt heißen?",
-      validate: (v) => (v.trim() ? undefined : "Name darf nicht leer sein"),
+      validate: (v) => (v?.trim() ? undefined : "Name darf nicht leer sein"),
     }));
 
   if (p.isCancel(name)) return p.cancel("Abgebrochen.");

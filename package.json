@@ -2,7 +2,6 @@
   "name": "project-cli",
   "version": "1.0.0",
   "description": "My own Project cli tool to start projecs",
-  "type": "commonjs",
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,7 +9,7 @@
   "bin": {
     "project-cli": "./dist/index.js"
   },
-  "types": "module",
+  "type": "module",
   "dependencies": {
     "@clack/prompts": "^1.8.1",
     "commander": "^15.0.0",
