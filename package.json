@@ -2,6 +2,7 @@
   "name": "project-cli",
   "version": "1.0.0",
   "description": "My own Project cli tool to start projecs",
+  "license": "MIT",
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
