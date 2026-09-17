@@ -1,0 +1,42 @@
+name: CI
+
+"on":
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build (dist/ + templates)
+        run: npm run build
+
+      # initGit() committet im Scaffold-Smoke-Test -> braucht eine Git-Identität,
+      # die auf frischen Runnern nicht existiert.
+      - name: Git-Identität für Scaffold-Commits setzen
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+
+      - name: Scaffold-Smoke-Test (ts-lib + esp32, gegen dist/index.js)
+        run: node scripts/ci-smoke-test.mjs
