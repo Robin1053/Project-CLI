@@ -88,9 +88,9 @@ Token scopes: Gitea needs `write:repository`. GitHub needs "Administration" (wri
 
 ## CI/CD
 
-Deliberately not set up yet — single developer, breakage surfaces immediately on next run, and the project structure still changes daily.
+`.github/workflows/ci.yaml` runs on push to `master` and on PRs: a matrix over `ubuntu-latest`/`windows-latest`/`macos-latest` running `npm ci`, `npx tsc --noEmit`, `npm run build`, then `scripts/ci-smoke-test.mjs` — scaffolds a `ts-lib` and an `esp32` project against the *built* `dist/index.js` (not `index.ts`, to actually exercise the packaging path) and asserts exit code, `{{projectName}}` substitution, git init, and the `gitignore` → `.gitignore` rename. This is the only thing that reliably catches cross-platform breakage and packaging regressions (both the `dist/templates` staleness bug and the `.gitignore`-stripping bug were found by testing this exact path manually before the CI existed).
 
-The one thing worth adding once the providers stabilize and the tool is in real use: a matrix over `ubuntu-latest` / `windows-latest` / `macos-latest` running `npm ci`, `npx tsc --noEmit`, and a scaffold run — the only guarantee (cross-platform behavior) that can't be checked locally. Publishing to npm (CD) only matters once the package is meant to be installed globally rather than run from the folder.
+`.github/workflows/publish.yaml` runs on every GitHub Release (`types: [published]`) and dual-publishes the built package: `project-cli` to npmjs.com (anonymous `npm i -g project-cli`, no auth needed to install; publish auth via repo secret `NPM_TOKEN`, an npm Automation Token) and, in a separate parallel job, `@robin1053/project-cli` to GitHub Packages (auth via the built-in `GITHUB_TOKEN`, needs `permissions: packages: write`) purely so the repo's GitHub sidebar shows a Packages widget — installing from GitHub Packages requires a PAT even for public packages, so npmjs.com stays the actual distribution channel. The GitHub Packages job renames the package via `npm pkg set name="@robin1053/project-cli"` in the runner's checkout only; the committed `package.json` keeps the unscoped `project-cli` name.
 
 ## Conventions
 

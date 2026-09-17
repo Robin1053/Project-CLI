@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "My own Project cli tool to start projecs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Robin1053/Project-CLI.git"
+  },
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc && node scripts/copy-templates.mjs",

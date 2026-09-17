@@ -1,0 +1,51 @@
+name: Publish package
+
+"on":
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Zweiter, unabhängiger Job: veröffentlicht dieselbe Version zusätzlich
+  # unter dem gescopten Namen @robin1053/project-cli auf GitHub Packages,
+  # damit das Repo das Packages-Widget in der Sidebar zeigt. Die eigentliche
+  # Installation für alle anderen bleibt über npmjs.com (project-cli, ohne
+  # Scope, anonym per `npm i -g`), dieser Job ist nur für die Sichtbarkeit.
+  publish-github-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@robin1053"
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm pkg set name="@robin1053/project-cli"
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

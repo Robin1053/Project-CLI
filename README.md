@@ -1,8 +1,22 @@
 # project-cli
 
+[![npm version](https://img.shields.io/npm/v/project-cli.svg)](https://www.npmjs.com/package/project-cli)
+
 Persönliches CLI-Tool, das neue Projekte anlegt: Grundgerüst erzeugen, Git
 initialisieren, optional ein Remote-Repository auf GitHub oder Gitea
 anlegen und pushen. Läuft unter Windows und macOS.
+
+## Installation
+
+```
+npm i -g project-cli
+```
+
+(Package auf [npmjs.com](https://www.npmjs.com/package/project-cli), anonym
+installierbar – kein Account/Token nötig. Zusätzlich als
+`@robin1053/project-cli` auf GitHub Packages veröffentlicht, rein für die
+Sichtbarkeit im Repo; installieren lohnt sich darüber nur, wenn man ohnehin
+schon für GitHub Packages authentifiziert ist.)
 
 ## Voraussetzungen
 
@@ -94,6 +108,21 @@ npm i -g .
 ```
 
 Es gibt noch keine Tests.
+
+### Veröffentlichen
+
+`.github/workflows/publish.yaml` läuft bei jedem GitHub Release (`types:
+[published]`) und veröffentlicht die gebaute Version zweimal parallel:
+
+- als `project-cli` auf npmjs.com (Auth über Secret `NPM_TOKEN` – ein
+  [npm Automation Token](https://www.npmjs.com/settings/robineb/tokens)
+  als Repo-Secret unter *Settings → Secrets and variables → Actions*)
+- als `@robin1053/project-cli` auf GitHub Packages (Auth über das
+  eingebaute `GITHUB_TOKEN`, kein Secret nötig)
+
+Ablauf für eine neue Version: `version` in `package.json` erhöhen, committen,
+Git-Tag + GitHub Release mit dieser Version anlegen – der Workflow übernimmt
+den Rest.
 
 ## Lizenz
 
