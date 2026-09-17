@@ -1,6 +1,6 @@
 # project-cli
 
-[![npm version](https://img.shields.io/npm/v/project-cli.svg)](https://www.npmjs.com/package/project-cli)
+[![npm version](https://img.shields.io/npm/v/@robineb/project-cli.svg)](https://www.npmjs.com/package/@robineb/project-cli)
 
 Persönliches CLI-Tool, das neue Projekte anlegt: Grundgerüst erzeugen, Git
 initialisieren, optional ein Remote-Repository auf GitHub oder Gitea
@@ -9,11 +9,14 @@ anlegen und pushen. Läuft unter Windows und macOS.
 ## Installation
 
 ```
-npm i -g project-cli
+npm i -g @robineb/project-cli
 ```
 
-(Package auf [npmjs.com](https://www.npmjs.com/package/project-cli), anonym
-installierbar – kein Account/Token nötig. Zusätzlich als
+(Package auf [npmjs.com](https://www.npmjs.com/package/@robineb/project-cli),
+anonym installierbar – kein Account/Token nötig. Scoped, weil der
+naheliegende unscoped Name `project-cli` bereits an ein fremdes Paket
+vergeben ist. Der aufgerufene Befehl heißt trotzdem schlicht `project-cli`,
+das bestimmt der `bin`-Eintrag, nicht der Package-Name. Zusätzlich als
 `@robin1053/project-cli` auf GitHub Packages veröffentlicht, rein für die
 Sichtbarkeit im Repo; installieren lohnt sich darüber nur, wenn man ohnehin
 schon für GitHub Packages authentifiziert ist.)
@@ -114,19 +117,28 @@ Es gibt noch keine Tests.
 `.github/workflows/publish.yaml` läuft bei jedem GitHub Release (`types:
 [published]`) und veröffentlicht die gebaute Version zweimal parallel:
 
-- als `project-cli` auf npmjs.com via **Trusted Publishing** (OIDC) – kein
-  Secret im Repo, npm tauscht den GitHub-Actions-OIDC-Token automatisch
-  gegen einen kurzlebigen Publish-Token. Muss einmalig auf npmjs.com für
-  das Paket eingerichtet werden: Trusted Publisher → GitHub Actions →
-  Owner `Robin1053`, Repo `Project-CLI`, Workflow-Datei `publish.yaml`.
-  (Klassische Access-Tokens mit direktem Publish-Recht werden von npm ab
-  Januar 2027 abgeschafft – Trusted Publishing ist der empfohlene Ersatz.)
+- als `@robineb/project-cli` auf npmjs.com via **Trusted Publishing** (OIDC) –
+  kein Secret im Repo, npm tauscht den GitHub-Actions-OIDC-Token automatisch
+  gegen einen kurzlebigen Publish-Token. (Klassische Access-Tokens mit
+  direktem Publish-Recht werden von npm ab Januar 2027 abgeschafft –
+  Trusted Publishing ist der empfohlene Ersatz.)
 - als `@robin1053/project-cli` auf GitHub Packages (Auth über das
   eingebaute `GITHUB_TOKEN`, kein Secret nötig)
 
-Ablauf für eine neue Version: `version` in `package.json` erhöhen, committen,
-Git-Tag + GitHub Release mit dieser Version anlegen – der Workflow übernimmt
-den Rest.
+Trusted Publishing lässt sich laut npm erst einrichten, wenn das Paket
+mindestens einmal existiert – deshalb einmaliger manueller Bootstrap, danach
+läuft alles Weitere über die CI ohne jedes Secret:
+
+```
+npm run build
+npm login
+npm publish
+npm trust github --allow-publish --file publish.yaml
+```
+
+Ablauf für jede weitere Version: `version` in `package.json` erhöhen,
+committen, Git-Tag + GitHub Release mit dieser Version anlegen – der
+Workflow übernimmt den Rest.
 
 ## Lizenz
 

@@ -1,5 +1,5 @@
 {
-  "name": "project-cli",
+  "name": "@robineb/project-cli",
   "version": "1.0.0",
   "description": "My own Project cli tool to start projecs",
   "license": "MIT",
@@ -7,13 +7,16 @@
     "type": "git",
     "url": "git+https://github.com/Robin1053/Project-CLI.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc && node scripts/copy-templates.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "project-cli": "./dist/index.js"
+    "project-cli": "dist/index.js"
   },
   "files": [
     "dist"
