@@ -114,9 +114,13 @@ Es gibt noch keine Tests.
 `.github/workflows/publish.yaml` läuft bei jedem GitHub Release (`types:
 [published]`) und veröffentlicht die gebaute Version zweimal parallel:
 
-- als `project-cli` auf npmjs.com (Auth über Secret `NPM_TOKEN` – ein
-  [npm Automation Token](https://www.npmjs.com/settings/robineb/tokens)
-  als Repo-Secret unter *Settings → Secrets and variables → Actions*)
+- als `project-cli` auf npmjs.com via **Trusted Publishing** (OIDC) – kein
+  Secret im Repo, npm tauscht den GitHub-Actions-OIDC-Token automatisch
+  gegen einen kurzlebigen Publish-Token. Muss einmalig auf npmjs.com für
+  das Paket eingerichtet werden: Trusted Publisher → GitHub Actions →
+  Owner `Robin1053`, Repo `Project-CLI`, Workflow-Datei `publish.yaml`.
+  (Klassische Access-Tokens mit direktem Publish-Recht werden von npm ab
+  Januar 2027 abgeschafft – Trusted Publishing ist der empfohlene Ersatz.)
 - als `@robin1053/project-cli` auf GitHub Packages (Auth über das
   eingebaute `GITHUB_TOKEN`, kein Secret nötig)
 

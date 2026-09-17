@@ -4,13 +4,17 @@ name: Publish package
   release:
     types: [published]
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
+  # Trusted Publishing (OIDC): kein NPM_TOKEN-Secret nötig. npm tauscht den
+  # GitHub-Actions-OIDC-Token (id-token: write) automatisch gegen einen
+  # kurzlebigen Publish-Token, sofern auf npmjs.com für dieses Paket ein
+  # Trusted Publisher auf genau dieses Repo + diese Workflow-Datei zeigt.
+  # Setup passiert auf npmjs.com (Login nötig, nicht hier automatisierbar).
   publish-npm:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -21,10 +25,7 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Zweiter, unabhängiger Job: veröffentlicht dieselbe Version zusätzlich
   # unter dem gescopten Namen @robin1053/project-cli auf GitHub Packages,
@@ -33,6 +34,9 @@ jobs:
   # Scope, anonym per `npm i -g`), dieser Job ist nur für die Sichtbarkeit.
   publish-github-packages:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
