@@ -197,11 +197,21 @@ async function scaffold(stack: Stack, targetDir: string, name: string) {
   if (stack.template) {
     const src = path.join(import.meta.dirname, "templates", stack.template);
     await fs.cp(src, targetDir, { recursive: true });
+    await restoreGitignore(targetDir);
     await replacePlaceholders(targetDir, { projectName: name });
     return;
   }
 
   throw new Error(`Stack ${stack.id} hat weder command noch template`);
+}
+
+// npm streicht jede Datei, die exakt ".gitignore" heißt, aus jedem Package
+// (unabhängig vom Pfad) -> Templates lagern sie ohne Punkt als "gitignore"
+// und wir benennen sie hier, nach dem Kopieren ins neue Projekt, zurück um.
+async function restoreGitignore(targetDir: string) {
+  const from = path.join(targetDir, "gitignore");
+  const to = path.join(targetDir, ".gitignore");
+  await fs.rename(from, to).catch(() => {});
 }
 
 async function replacePlaceholders(dir: string, vars: Record<string, string>) {
