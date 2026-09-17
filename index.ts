@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import { Command } from "commander";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
-import { simpleGit } from "simple-git";
+import { simpleGit, CheckRepoActions } from "simple-git";
 import Conf from "conf";
 
 // ---------------------------------------------------------------------------
@@ -216,8 +216,12 @@ async function replacePlaceholders(dir: string, vars: Record<string, string>) {
 async function initGit(targetDir: string) {
   const git = simpleGit(targetDir);
 
-  // Manche Generatoren (create-next-app) haben schon initialisiert
-  const alreadyRepo = await git.checkIsRepo().catch(() => false);
+  // IS_REPO_ROOT statt Default: Default prüft nur "irgendwo unter einem Repo",
+  // das wäre auch true, wenn targetDir zufällig innerhalb eines fremden
+  // Repos liegt -> init() würde übersprungen und add/commit liefen gegen
+  // das falsche (übergeordnete) Repo. Hier soll nur erkannt werden, ob
+  // targetDir selbst schon ein eigenes .git hat (z.B. von create-next-app).
+  const alreadyRepo = await git.checkIsRepo(CheckRepoActions.IS_REPO_ROOT).catch(() => false);
   if (!alreadyRepo) await git.init();
 
   await git.add(".");
