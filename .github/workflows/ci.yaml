@@ -36,7 +36,7 @@ jobs:
       - name: Git-Identität für Scaffold-Commits setzen
         run: |
           git config --global user.name "CI"
-          git config --global user.email "ci@example.com"
+          git config --global user.email "ci@robineb.de"
 
       - name: Scaffold-Smoke-Test (ts-lib + esp32, gegen dist/index.js)
         run: node scripts/ci-smoke-test.mjs
