@@ -6,6 +6,7 @@ import { Command } from "commander";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
 import { simpleGit } from "simple-git";
+import Conf from "conf";
 
 // ---------------------------------------------------------------------------
 // 1. Stack-Definitionen
@@ -34,7 +35,12 @@ const STACKS: Stack[] = [
     label: "TypeScript Package (eigenes Template)",
     template: "ts-lib",
   },
-  // TODO: hier deine weiteren Stacks eintragen (python, esp32, ...)
+  {
+    id: "esp32",
+    label: "PlatformIO / ESP32 (Arduino)",
+    template: "esp32",
+  },
+  // TODO: hier deine weiteren Stacks eintragen (python, ...)
 ];
 
 // ---------------------------------------------------------------------------
@@ -112,6 +118,54 @@ class GitHubProvider implements RemoteProvider {
 }
 
 // ---------------------------------------------------------------------------
+// 2b. Zugangsdaten
+//     Erst ENV-Variable, dann gespeicherte Config, sonst interaktiv abfragen
+//     und für nächstes Mal speichern (plattformgerechter Pfad via `conf`,
+//     z.B. %APPDATA% unter Windows). Kein Klartext-Log der Tokens.
+// ---------------------------------------------------------------------------
+
+type StoredConfig = {
+  githubToken?: string;
+  giteaUrl?: string;
+  giteaToken?: string;
+};
+
+const config = new Conf<StoredConfig>({ projectName: "project-cli" });
+
+async function ask(message: string): Promise<string> {
+  const answer = await p.password({ message });
+  if (p.isCancel(answer)) throw new Error("Abgebrochen.");
+  return answer;
+}
+
+async function askText(message: string): Promise<string> {
+  const answer = await p.text({ message });
+  if (p.isCancel(answer)) throw new Error("Abgebrochen.");
+  return answer;
+}
+
+async function resolveGitHubToken(): Promise<string> {
+  const existing = process.env.GITHUB_TOKEN ?? config.get("githubToken");
+  if (existing) return existing;
+
+  const token = await ask("GitHub Personal Access Token (repo-Scope)");
+  config.set("githubToken", token);
+  return token;
+}
+
+async function resolveGiteaCredentials(): Promise<[baseUrl: string, token: string]> {
+  const existingUrl = process.env.GITEA_URL ?? config.get("giteaUrl");
+  const baseUrl = existingUrl ?? (await askText("Gitea-URL (z.B. https://gitea.example.com)"));
+  if (!existingUrl) config.set("giteaUrl", baseUrl);
+
+  const existingToken = process.env.GITEA_TOKEN ?? config.get("giteaToken");
+  const token = existingToken ?? (await ask("Gitea Access Token (write:repository-Scope)"));
+  if (!existingToken) config.set("giteaToken", token);
+
+  return [baseUrl, token];
+}
+
+// ---------------------------------------------------------------------------
 // 3. Die einzelnen Arbeitsschritte
 // ---------------------------------------------------------------------------
 
@@ -168,6 +222,67 @@ async function initGit(targetDir: string) {
 
   await git.add(".");
   await git.commit("chore: initial scaffold");
+}
+
+// ---------------------------------------------------------------------------
+// 3b. PlatformIO-Helfer (build/upload/add-board)
+//     Ersatz für das commands.sh-Script aus dem esp32-Template-Vorbild:
+//     dort Bash + fzf, hier execa + @clack/prompts, damit es auch unter
+//     PowerShell/cmd läuft. Arbeiten immer auf der platformio.ini im cwd.
+// ---------------------------------------------------------------------------
+
+async function readPioEnvironments(cwd: string): Promise<string[]> {
+  const iniPath = path.join(cwd, "platformio.ini");
+
+  let content: string;
+  try {
+    content = await fs.readFile(iniPath, "utf8");
+  } catch {
+    throw new Error(`Keine platformio.ini in ${cwd} gefunden.`);
+  }
+
+  return [...content.matchAll(/^\[env:([^\]]+)\]/gm)].map((m) => m[1]);
+}
+
+async function selectPioEnvironment(cwd: string, message: string): Promise<string> {
+  const envs = await readPioEnvironments(cwd);
+  if (envs.length === 0) throw new Error("Keine [env:...]-Sektionen in platformio.ini gefunden.");
+  if (envs.length === 1) return envs[0];
+
+  const choice = await p.select({
+    message,
+    options: envs.map((e) => ({ value: e, label: e })),
+  });
+  if (p.isCancel(choice)) throw new Error("Abgebrochen.");
+  return choice;
+}
+
+type PioBoard = { id: string; name: string };
+
+async function searchEsp32Boards(query: string): Promise<PioBoard[]> {
+  const { stdout } = await execa("pio", ["boards", "espressif32", "--json-output"]);
+  const boards = JSON.parse(stdout) as PioBoard[];
+
+  if (!query.trim()) return boards;
+  const q = query.toLowerCase();
+  return boards.filter((b) => `${b.id} ${b.name}`.toLowerCase().includes(q));
+}
+
+async function addBoard(cwd: string) {
+  const query = await askText('Board suchen (z.B. "esp32-s3", leer = alle anzeigen)');
+  const boards = await searchEsp32Boards(query);
+  if (boards.length === 0) throw new Error("Keine passenden Boards gefunden.");
+
+  const boardId = await p.select({
+    message: "Welches Board?",
+    options: boards.slice(0, 50).map((b) => ({ value: b.id, label: `${b.name} (${b.id})` })),
+  });
+  if (p.isCancel(boardId)) throw new Error("Abgebrochen.");
+
+  const envName = await askText('Name der neuen Environment (z.B. "my-esp32-s3")');
+
+  const section = `\n[env:${envName}]\nplatform = espressif32\nboard = ${boardId}\n`;
+  await fs.appendFile(path.join(cwd, "platformio.ini"), section, "utf8");
 }
 
 // ---------------------------------------------------------------------------
@@ -228,14 +343,14 @@ async function run(nameArg: string | undefined, opts: { private?: boolean }) {
   s.stop("Erster Commit ist da");
 
   if (remoteChoice !== "none") {
-    s.start("Remote wird angelegt");
-
-    // TODO: Token aus Config/Keychain laden statt aus der Umgebung
+    // Zugangsdaten zuerst einsammeln (interaktiv, falls nötig) — danach erst
+    // den Spinner starten, sonst überlagern sich Prompt und Spinner.
     const provider: RemoteProvider =
       remoteChoice === "gitea"
-        ? new GiteaProvider(process.env.GITEA_URL!, process.env.GITEA_TOKEN!)
-        : new GitHubProvider(process.env.GITHUB_TOKEN!);
+        ? new GiteaProvider(...(await resolveGiteaCredentials()))
+        : new GitHubProvider(await resolveGitHubToken());
 
+    s.start("Remote wird angelegt");
     const cloneUrl = await provider.createRepo(name, opts.private ?? false);
 
     const git = simpleGit(targetDir);
@@ -260,6 +375,33 @@ program
   .argument("[name]", "Projektname")
   .option("-p, --private", "Remote-Repo privat anlegen")
   .action(run);
+
+// Die folgenden Befehle arbeiten auf einem bestehenden PlatformIO-Projekt
+// im aktuellen Arbeitsverzeichnis (nicht auf dem Scaffold-Flow oben).
+program
+  .command("build [env]")
+  .description("PlatformIO-Firmware bauen (pio run)")
+  .action(async (env?: string) => {
+    const cwd = process.cwd();
+    const selected = env ?? (await selectPioEnvironment(cwd, "Welche Environment bauen?"));
+    await execa("pio", ["run", "-e", selected], { cwd, stdio: "inherit" });
+  });
+
+program
+  .command("upload [env]")
+  .description("Firmware bauen und aufs Board flashen (pio run -t upload)")
+  .action(async (env?: string) => {
+    const cwd = process.cwd();
+    const selected = env ?? (await selectPioEnvironment(cwd, "Welche Environment flashen?"));
+    await execa("pio", ["run", "-e", selected, "-t", "upload"], { cwd, stdio: "inherit" });
+  });
+
+program
+  .command("add-board")
+  .description("Neues ESP32-Board zur platformio.ini hinzufügen")
+  .action(async () => {
+    await addBoard(process.cwd());
+  });
 
 program.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);
