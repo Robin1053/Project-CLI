@@ -64,12 +64,14 @@ definierten `[env:...]`-Sektionen ausgewählt.
 GitHub- bzw. Gitea-Token werden in dieser Reihenfolge aufgelöst:
 
 1. Umgebungsvariable (`GITHUB_TOKEN` bzw. `GITEA_URL`/`GITEA_TOKEN`)
-2. gespeicherte Config
+2. gespeicherter Wert
 3. interaktive Abfrage (wird danach für nächstes Mal gespeichert)
 
-Gespeichert wird plattformgerecht über [`conf`](https://github.com/sindresorhus/conf)
-(`%APPDATA%` unter Windows, `~/Library/Application Support` unter macOS,
-XDG-Pfade unter Linux) – aktuell als Klartext-JSON, nicht im OS-Schlüsselbund.
+Tokens landen dabei im OS-eigenen Schlüsselbund über [`@napi-rs/keyring`](https://github.com/napi-rs/keyring-node)
+(Windows Credential Manager, macOS Keychain, Linux Secret Service/libsecret) –
+nicht in einer Klartextdatei. Die Gitea-URL (kein Geheimnis) bleibt plattformgerecht
+in [`conf`](https://github.com/sindresorhus/conf) (`%APPDATA%` unter Windows,
+`~/Library/Application Support` unter macOS, XDG-Pfade unter Linux).
 
 Token-Scopes: Gitea braucht `write:repository`. GitHub braucht „Administration"
 (Schreibrecht) auf einem Fine-grained PAT, oder `repo`/`public_repo` auf
@@ -83,8 +85,15 @@ Typecheck gegen die Root-`tsconfig.json`:
 npx tsc --noEmit
 ```
 
-Es gibt noch keine Tests und keinen Build-Schritt (`bin` in `package.json`
-ist aktuell aspirational).
+Build für die globale Installation (kompiliert nach `dist/` und kopiert
+`templates/` dorthin, siehe `bin` in `package.json`):
+
+```
+npm run build
+npm i -g .
+```
+
+Es gibt noch keine Tests.
 
 ## Lizenz
 

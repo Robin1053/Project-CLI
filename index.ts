@@ -7,6 +7,7 @@ import * as p from "@clack/prompts";
 import { execa } from "execa";
 import { simpleGit, CheckRepoActions } from "simple-git";
 import Conf from "conf";
+import { Entry } from "@napi-rs/keyring";
 
 // ---------------------------------------------------------------------------
 // 1. Stack-Definitionen
@@ -119,18 +120,29 @@ class GitHubProvider implements RemoteProvider {
 
 // ---------------------------------------------------------------------------
 // 2b. Zugangsdaten
-//     Erst ENV-Variable, dann gespeicherte Config, sonst interaktiv abfragen
-//     und für nächstes Mal speichern (plattformgerechter Pfad via `conf`,
-//     z.B. %APPDATA% unter Windows). Kein Klartext-Log der Tokens.
+//     Erst ENV-Variable, dann gespeicherter Wert, sonst interaktiv abfragen
+//     und für nächstes Mal speichern. Tokens (Secrets) landen im OS-eigenen
+//     Schlüsselbund über @napi-rs/keyring (Windows Credential Manager,
+//     macOS Keychain, Linux Secret Service/libsecret) statt in einer Datei.
+//     Nicht-geheime Werte wie die Gitea-URL bleiben in `conf`
+//     (plattformgerechter Pfad, z.B. %APPDATA% unter Windows).
 // ---------------------------------------------------------------------------
 
 type StoredConfig = {
-  githubToken?: string;
   giteaUrl?: string;
-  giteaToken?: string;
 };
 
 const config = new Conf<StoredConfig>({ projectName: "project-cli" });
+
+const KEYRING_SERVICE = "project-cli";
+
+function getStoredSecret(account: string): string | undefined {
+  return new Entry(KEYRING_SERVICE, account).getPassword() ?? undefined;
+}
+
+function setStoredSecret(account: string, value: string): void {
+  new Entry(KEYRING_SERVICE, account).setPassword(value);
+}
 
 async function ask(message: string): Promise<string> {
   const answer = await p.password({ message });
@@ -145,22 +157,27 @@ async function askText(message: string): Promise<string> {
 }
 
 async function resolveGitHubToken(): Promise<string> {
-  const existing = process.env.GITHUB_TOKEN ?? config.get("githubToken");
+  const existing = process.env.GITHUB_TOKEN ?? getStoredSecret("github-token");
   if (existing) return existing;
 
   const token = await ask("GitHub Personal Access Token (repo-Scope)");
-  config.set("githubToken", token);
+  setStoredSecret("github-token", token);
   return token;
 }
 
-async function resolveGiteaCredentials(): Promise<[baseUrl: string, token: string]> {
+async function resolveGiteaCredentials(): Promise<
+  [baseUrl: string, token: string]
+> {
   const existingUrl = process.env.GITEA_URL ?? config.get("giteaUrl");
-  const baseUrl = existingUrl ?? (await askText("Gitea-URL (z.B. https://gitea.example.com)"));
+  const baseUrl =
+    existingUrl ??
+    (await askText("Gitea-URL (z.B. https://gitea.example.com)"));
   if (!existingUrl) config.set("giteaUrl", baseUrl);
 
-  const existingToken = process.env.GITEA_TOKEN ?? config.get("giteaToken");
-  const token = existingToken ?? (await ask("Gitea Access Token (write:repository-Scope)"));
-  if (!existingToken) config.set("giteaToken", token);
+  const existingToken = process.env.GITEA_TOKEN ?? getStoredSecret("gitea-token");
+  const token =
+    existingToken ?? (await ask("Gitea Access Token (write:repository-Scope)"));
+  if (!existingToken) setStoredSecret("gitea-token", token);
 
   return [baseUrl, token];
 }
@@ -221,7 +238,9 @@ async function initGit(targetDir: string) {
   // Repos liegt -> init() würde übersprungen und add/commit liefen gegen
   // das falsche (übergeordnete) Repo. Hier soll nur erkannt werden, ob
   // targetDir selbst schon ein eigenes .git hat (z.B. von create-next-app).
-  const alreadyRepo = await git.checkIsRepo(CheckRepoActions.IS_REPO_ROOT).catch(() => false);
+  const alreadyRepo = await git
+    .checkIsRepo(CheckRepoActions.IS_REPO_ROOT)
+    .catch(() => false);
   if (!alreadyRepo) await git.init();
 
   await git.add(".");
@@ -248,9 +267,13 @@ async function readPioEnvironments(cwd: string): Promise<string[]> {
   return [...content.matchAll(/^\[env:([^\]]+)\]/gm)].map((m) => m[1]);
 }
 
-async function selectPioEnvironment(cwd: string, message: string): Promise<string> {
+async function selectPioEnvironment(
+  cwd: string,
+  message: string,
+): Promise<string> {
   const envs = await readPioEnvironments(cwd);
-  if (envs.length === 0) throw new Error("Keine [env:...]-Sektionen in platformio.ini gefunden.");
+  if (envs.length === 0)
+    throw new Error("Keine [env:...]-Sektionen in platformio.ini gefunden.");
   if (envs.length === 1) return envs[0];
 
   const choice = await p.select({
@@ -264,7 +287,11 @@ async function selectPioEnvironment(cwd: string, message: string): Promise<strin
 type PioBoard = { id: string; name: string };
 
 async function searchEsp32Boards(query: string): Promise<PioBoard[]> {
-  const { stdout } = await execa("pio", ["boards", "espressif32", "--json-output"]);
+  const { stdout } = await execa("pio", [
+    "boards",
+    "espressif32",
+    "--json-output",
+  ]);
   const boards = JSON.parse(stdout) as PioBoard[];
 
   if (!query.trim()) return boards;
@@ -273,17 +300,23 @@ async function searchEsp32Boards(query: string): Promise<PioBoard[]> {
 }
 
 async function addBoard(cwd: string) {
-  const query = await askText('Board suchen (z.B. "esp32-s3", leer = alle anzeigen)');
+  const query = await askText(
+    'Board suchen (z.B. "esp32-s3", leer = alle anzeigen)',
+  );
   const boards = await searchEsp32Boards(query);
   if (boards.length === 0) throw new Error("Keine passenden Boards gefunden.");
 
   const boardId = await p.select({
     message: "Welches Board?",
-    options: boards.slice(0, 50).map((b) => ({ value: b.id, label: `${b.name} (${b.id})` })),
+    options: boards
+      .slice(0, 50)
+      .map((b) => ({ value: b.id, label: `${b.name} (${b.id})` })),
   });
   if (p.isCancel(boardId)) throw new Error("Abgebrochen.");
 
-  const envName = await askText('Name der neuen Environment (z.B. "my-esp32-s3")');
+  const envName = await askText(
+    'Name der neuen Environment (z.B. "my-esp32-s3")',
+  );
 
   const section = `\n[env:${envName}]\nplatform = espressif32\nboard = ${boardId}\n`;
   await fs.appendFile(path.join(cwd, "platformio.ini"), section, "utf8");
@@ -387,7 +420,8 @@ program
   .description("PlatformIO-Firmware bauen (pio run)")
   .action(async (env?: string) => {
     const cwd = process.cwd();
-    const selected = env ?? (await selectPioEnvironment(cwd, "Welche Environment bauen?"));
+    const selected =
+      env ?? (await selectPioEnvironment(cwd, "Welche Environment bauen?"));
     await execa("pio", ["run", "-e", selected], { cwd, stdio: "inherit" });
   });
 
@@ -396,8 +430,12 @@ program
   .description("Firmware bauen und aufs Board flashen (pio run -t upload)")
   .action(async (env?: string) => {
     const cwd = process.cwd();
-    const selected = env ?? (await selectPioEnvironment(cwd, "Welche Environment flashen?"));
-    await execa("pio", ["run", "-e", selected, "-t", "upload"], { cwd, stdio: "inherit" });
+    const selected =
+      env ?? (await selectPioEnvironment(cwd, "Welche Environment flashen?"));
+    await execa("pio", ["run", "-e", selected, "-t", "upload"], {
+      cwd,
+      stdio: "inherit",
+    });
   });
 
 program
