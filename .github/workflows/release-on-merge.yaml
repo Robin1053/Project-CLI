@@ -1,0 +1,80 @@
+name: Release on version bump
+
+# Läuft nach jedem Push/Merge auf master (z.B. PR-Accept von devolopment).
+# Prüft, ob package.json eine höhere Version als der letzte Git-Tag trägt,
+# und legt in dem Fall automatisch Tag + GitHub-Release an und ruft den
+# bestehenden Publish-Workflow direkt auf (siehe publish.yaml, workflow_call).
+"on":
+  push:
+    branches: [master]
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      higher: ${{ steps.compare.outputs.higher }}
+      tag: V${{ steps.current.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Aktuelle Version aus package.json lesen
+        id: current
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Letzten Tag ermitteln
+        id: latest
+        run: |
+          TAG=$(git tag --list 'V*' --sort=-v:refname | head -n1)
+          echo "version=${TAG#V}" >> "$GITHUB_OUTPUT"
+
+      # Werte kommen als env rein statt direkt in den Skript-String
+      # interpoliert zu werden -> kein Shell/JS-Injection-Risiko über den
+      # Versionsstring.
+      - name: Versionen vergleichen
+        id: compare
+        env:
+          CURRENT: ${{ steps.current.outputs.version }}
+          LATEST: ${{ steps.latest.outputs.version }}
+        run: |
+          node -e "
+            const cur = process.env.CURRENT.split('.').map(Number);
+            const prevRaw = process.env.LATEST || '0.0.0';
+            const prev = prevRaw.split('.').map(Number);
+            const higher = cur[0] !== prev[0] ? cur[0] > prev[0]
+              : cur[1] !== prev[1] ? cur[1] > prev[1]
+              : cur[2] > prev[2];
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'higher=' + higher + '\n');
+          "
+
+  tag-and-release:
+    needs: check-version
+    if: needs.check-version.outputs.higher == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tag ist NICHT GPG-signiert (CI hat keinen privaten Schlüssel) -
+      # anders als die manuell per `git tag -s` gesetzten Tags bisher.
+      - name: Tag und GitHub-Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check-version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "$TAG" --generate-notes
+
+  publish:
+    needs: [check-version, tag-and-release]
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/publish.yaml
