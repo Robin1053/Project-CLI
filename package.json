@@ -1,6 +1,6 @@
 {
   "name": "@robineb/project-cli",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "My own Project cli tool to start projecs",
   "license": "MIT",
   "repository": {
