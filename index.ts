@@ -41,7 +41,12 @@ const STACKS: Stack[] = [
     label: "PlatformIO / ESP32 (Arduino)",
     template: "esp32",
   },
-  // TODO: hier deine weiteren Stacks eintragen (python, ...)
+  {
+    id: "python",
+    label: "Python Package (eigenes Template)",
+    template: "python",
+  },
+  // TODO: hier deine weiteren Stacks eintragen
 ];
 
 // ---------------------------------------------------------------------------
@@ -218,7 +223,13 @@ async function scaffold(stack: Stack, targetDir: string, name: string) {
     const src = path.join(import.meta.dirname, "templates", stack.template);
     await fs.cp(src, targetDir, { recursive: true });
     await restoreGitignore(targetDir);
-    await replacePlaceholders(targetDir, { projectName: name });
+    // pythonPackageName: Bindestriche/Punkte sind in Projektnamen erlaubt
+    // (Gitea/GitHub-Repo-Namen), aber kein gültiger Python-Bezeichner ->
+    // eigener, bereinigter Platzhalter fürs Python-Template.
+    await replacePlaceholders(targetDir, {
+      projectName: name,
+      pythonPackageName: name.toLowerCase().replace(/[^a-z0-9_]+/g, "_"),
+    });
     return;
   }
 
@@ -257,6 +268,32 @@ async function replacePlaceholders(dir: string, vars: Record<string, string>) {
     }
 
     if (replaced !== content) await fs.writeFile(full, replaced, "utf8");
+  }
+
+  await renamePlaceholderPaths(dir, vars);
+}
+
+// Datei-/Ordnernamen mit Platzhaltern umbenennen (z.B. src/{{projectName}}/
+// für ein Python-Package). Läuft rekursiv pro Verzeichnisebene von außen
+// nach innen und fragt bei jedem Schritt den aktuellen Verzeichnisinhalt
+// neu ab -> ein umbenannter Ordner wird mitsamt seinem (noch nicht
+// umbenannten) Inhalt an die neue Stelle verschoben, bevor wir tiefer
+// absteigen. Eine vorab gesammelte Pfadliste würde hier stale werden,
+// sobald ein Vorfahre umbenannt ist.
+async function renamePlaceholderPaths(dir: string, vars: Record<string, string>) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    let renamedName = entry.name;
+    for (const [key, value] of Object.entries(vars)) {
+      renamedName = renamedName.replaceAll(`{{${key}}}`, value);
+    }
+
+    const oldPath = path.join(dir, entry.name);
+    const newPath = path.join(dir, renamedName);
+    if (renamedName !== entry.name) await fs.rename(oldPath, newPath);
+
+    if (entry.isDirectory()) await renamePlaceholderPaths(newPath, vars);
   }
 }
 
