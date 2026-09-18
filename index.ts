@@ -151,7 +151,10 @@ async function ask(message: string): Promise<string> {
 }
 
 async function askText(message: string): Promise<string> {
-  const answer = await p.text({ message });
+  const answer = await p.text({
+    message,
+    validate: (value) => (value?.trim() ? undefined : "Darf nicht leer sein."),
+  });
   if (p.isCancel(answer)) throw new Error("Abgebrochen.");
   return answer;
 }
@@ -168,13 +171,16 @@ async function resolveGitHubToken(): Promise<string> {
 async function resolveGiteaCredentials(): Promise<
   [baseUrl: string, token: string]
 > {
-  const existingUrl = process.env.GITEA_URL ?? config.get("giteaUrl");
+  // Leerer String zählt als "nicht vorhanden" (z.B. ein früherer Lauf hat
+  // versehentlich "" gespeichert) -> nicht nur auf null/undefined prüfen.
+  const existingUrl = process.env.GITEA_URL || config.get("giteaUrl") || undefined;
   const baseUrl =
     existingUrl ??
     (await askText("Gitea-URL (z.B. https://gitea.example.com)"));
   if (!existingUrl) config.set("giteaUrl", baseUrl);
 
-  const existingToken = process.env.GITEA_TOKEN ?? getStoredSecret("gitea-token");
+  const existingToken =
+    process.env.GITEA_TOKEN || getStoredSecret("gitea-token") || undefined;
   const token =
     existingToken ?? (await ask("Gitea Access Token (write:repository-Scope)"));
   if (!existingToken) setStoredSecret("gitea-token", token);
