@@ -1,0 +1,51 @@
+name: Compare version against latest tag
+description: >
+  Vergleicht die Version aus package.json mit dem neuesten Git-Tag
+  (V-Präfix, SemVer major.minor.patch). Setzt voraus, dass der Aufrufer
+  vorher schon mit fetch-depth 0 und fetch-tags ausgecheckt hat.
+
+outputs:
+  higher:
+    description: "true, wenn die package.json-Version höher ist als der letzte Tag"
+    value: ${{ steps.compare.outputs.higher }}
+  current:
+    description: "Aktuelle Version aus package.json"
+    value: ${{ steps.current.outputs.version }}
+  tag:
+    description: "Zugehöriger Tag-Name (V-Präfix)"
+    value: V${{ steps.current.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Aktuelle Version aus package.json lesen
+      id: current
+      shell: bash
+      run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Letzten Tag ermitteln
+      id: latest
+      shell: bash
+      run: |
+        TAG=$(git tag --list 'V*' --sort=-v:refname | head -n1)
+        echo "version=${TAG#V}" >> "$GITHUB_OUTPUT"
+
+    # Werte kommen als env rein statt direkt in den Skript-String
+    # interpoliert zu werden -> kein Shell/JS-Injection-Risiko über den
+    # Versionsstring.
+    - name: Versionen vergleichen
+      id: compare
+      shell: bash
+      env:
+        CURRENT: ${{ steps.current.outputs.version }}
+        LATEST: ${{ steps.latest.outputs.version }}
+      run: |
+        node -e "
+          const cur = process.env.CURRENT.split('.').map(Number);
+          const prevRaw = process.env.LATEST || '0.0.0';
+          const prev = prevRaw.split('.').map(Number);
+          const higher = cur[0] !== prev[0] ? cur[0] > prev[0]
+            : cur[1] !== prev[1] ? cur[1] > prev[1]
+            : cur[2] > prev[2];
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'higher=' + higher + '\n');
+        "

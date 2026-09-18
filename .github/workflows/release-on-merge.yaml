@@ -13,41 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       higher: ${{ steps.compare.outputs.higher }}
-      tag: V${{ steps.current.outputs.version }}
+      tag: ${{ steps.compare.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Aktuelle Version aus package.json lesen
-        id: current
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Letzten Tag ermitteln
-        id: latest
-        run: |
-          TAG=$(git tag --list 'V*' --sort=-v:refname | head -n1)
-          echo "version=${TAG#V}" >> "$GITHUB_OUTPUT"
-
-      # Werte kommen als env rein statt direkt in den Skript-String
-      # interpoliert zu werden -> kein Shell/JS-Injection-Risiko über den
-      # Versionsstring.
-      - name: Versionen vergleichen
+      - uses: ./.github/actions/compare-version
         id: compare
-        env:
-          CURRENT: ${{ steps.current.outputs.version }}
-          LATEST: ${{ steps.latest.outputs.version }}
-        run: |
-          node -e "
-            const cur = process.env.CURRENT.split('.').map(Number);
-            const prevRaw = process.env.LATEST || '0.0.0';
-            const prev = prevRaw.split('.').map(Number);
-            const higher = cur[0] !== prev[0] ? cur[0] > prev[0]
-              : cur[1] !== prev[1] ? cur[1] > prev[1]
-              : cur[2] > prev[2];
-            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'higher=' + higher + '\n');
-          "
 
   tag-and-release:
     needs: check-version
