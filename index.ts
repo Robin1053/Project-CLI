@@ -2,6 +2,7 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { Command } from "commander";
 import * as p from "@clack/prompts";
 import { execa } from "execa";
@@ -203,7 +204,7 @@ async function resolveGiteaCredentials(): Promise<
 // statt erst nach Scaffold + erstem Commit bei der Remote-Erstellung.
 const PROJECT_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
-function validateProjectName(name: string | undefined): string | undefined {
+export function validateProjectName(name: string | undefined): string | undefined {
   if (!name?.trim()) return "Name darf nicht leer sein";
   if (!PROJECT_NAME_PATTERN.test(name)) {
     return "Name darf nur Buchstaben, Ziffern, '-', '_' und '.' enthalten (muss mit Buchstabe/Ziffer beginnen und enden)";
@@ -245,7 +246,7 @@ async function restoreGitignore(targetDir: string) {
   await fs.rename(from, to).catch(() => {});
 }
 
-async function replacePlaceholders(dir: string, vars: Record<string, string>) {
+export async function replacePlaceholders(dir: string, vars: Record<string, string>) {
   const entries = await fs.readdir(dir, {
     withFileTypes: true,
     recursive: true,
@@ -523,7 +524,13 @@ program
     await addBoard(process.cwd());
   });
 
-program.parseAsync().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Guard, damit ein Import dieser Datei (z.B. aus Tests) nicht sofort die
+// interaktive CLI anwirft — nur wenn die Datei direkt ausgeführt wird.
+// pathToFileURL() statt string-Vergleich mit process.argv[1], weil das auf
+// Windows sonst an Backslashes/URL-Encoding scheitert.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  program.parseAsync().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
