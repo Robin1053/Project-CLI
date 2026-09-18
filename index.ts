@@ -192,6 +192,20 @@ async function resolveGiteaCredentials(): Promise<
 // 3. Die einzelnen Arbeitsschritte
 // ---------------------------------------------------------------------------
 
+// Deckt sowohl Gitea (Regel "AlphaDashDot") als auch GitHub ab: nur
+// alphanumerische Zeichen, "-", "_" und ".", muss mit alphanumerisch
+// beginnen und enden. Leerzeichen wie in "esp 32" fallen damit sofort auf,
+// statt erst nach Scaffold + erstem Commit bei der Remote-Erstellung.
+const PROJECT_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+
+function validateProjectName(name: string | undefined): string | undefined {
+  if (!name?.trim()) return "Name darf nicht leer sein";
+  if (!PROJECT_NAME_PATTERN.test(name)) {
+    return "Name darf nur Buchstaben, Ziffern, '-', '_' und '.' enthalten (muss mit Buchstabe/Ziffer beginnen und enden)";
+  }
+  return undefined;
+}
+
 async function scaffold(stack: Stack, targetDir: string, name: string) {
   if (stack.command) {
     const { file, args } = stack.command(name);
@@ -349,10 +363,21 @@ async function run(nameArg: string | undefined, opts: { private?: boolean }) {
     nameArg ??
     (await p.text({
       message: "Wie soll das Projekt heißen?",
-      validate: (v) => (v?.trim() ? undefined : "Name darf nicht leer sein"),
+      validate: (v) => validateProjectName(v),
     }));
 
   if (p.isCancel(name)) return p.cancel("Abgebrochen.");
+
+  // nameArg kommt am Prompt vorbei (CLI-Argument statt p.text) -> hier
+  // nochmal prüfen. Sonst scheitert erst die Remote-Erstellung nach
+  // Scaffold + erstem Commit (Gitea/GitHub lehnen z.B. Leerzeichen im
+  // Namen mit "AlphaDashDot" bzw. 422 ab), und die lokale Arbeit ist
+  // bereits passiert, ohne dass ein Remote konfiguriert wurde.
+  const nameError = validateProjectName(name);
+  if (nameError) {
+    p.cancel(nameError);
+    return;
+  }
 
   const stackId = await p.select({
     message: "Welcher Stack?",
