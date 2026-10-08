@@ -1,10 +1,5 @@
 name: Require version bump
 
-# Blockiert PRs nach master, deren package.json-Version nicht höher ist
-# als der letzte Release-Tag -> als "required check" in der
-# Branch-Protection von master eingetragen. PRs ohne Release-Bedarf
-# (z.B. reine CI-/Doku-Änderungen) bekommen das Label "no-release" und
-# überspringen den Check.
 "on":
   pull_request:
     branches: [master]

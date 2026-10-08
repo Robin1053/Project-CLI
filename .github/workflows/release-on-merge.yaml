@@ -1,9 +1,5 @@
 name: Release on version bump
 
-# Läuft nach jedem Push/Merge auf master (z.B. PR-Accept von devolopment).
-# Prüft, ob package.json eine höhere Version als der letzte Git-Tag trägt,
-# und legt in dem Fall automatisch Tag + GitHub-Release an und ruft den
-# bestehenden Publish-Workflow direkt auf (siehe publish.yaml, workflow_call).
 "on":
   pull_request:
     types:
@@ -35,8 +31,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Tag ist NICHT GPG-signiert (CI hat keinen privaten Schlüssel) -
-      # anders als die manuell per `git tag -s` gesetzten Tags bisher.
       - name: Tag und GitHub-Release anlegen
         uses: anothrNick/github-tag-action@1.75.0
         env:

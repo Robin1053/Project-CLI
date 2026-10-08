@@ -31,8 +31,6 @@ jobs:
       - name: Build (dist/ + templates)
         run: npm run build
 
-      # initGit() committet im Scaffold-Smoke-Test -> braucht eine Git-Identität,
-      # die auf frischen Runnern nicht existiert.
       - name: Git-Identität für Scaffold-Commits setzen
         run: |
           git config --global user.name "CI"
