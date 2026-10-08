@@ -1,13 +1,6 @@
 name: Publish package
 
 "on":
-  release:
-    types: [published]
-  # Erlaubt Aufruf als reusable workflow (siehe release-on-merge.yaml) —
-  # der Publish-Lauf passiert dann im selben Workflow-Run wie das Tagging,
-  # statt über das release-Event verkettet zu werden. Nötig, weil ein
-  # Tag/Release, das der Standard-GITHUB_TOKEN erstellt, keine weiteren
-  # Workflow-Läufe auslöst (Loop-Schutz von GitHub Actions).
   workflow_call:
 
 jobs:
