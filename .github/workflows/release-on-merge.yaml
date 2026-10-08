@@ -5,8 +5,11 @@ name: Release on version bump
 # und legt in dem Fall automatisch Tag + GitHub-Release an und ruft den
 # bestehenden Publish-Workflow direkt auf (siehe publish.yaml, workflow_call).
 "on":
-  push:
-    branches: [master]
+  pull_request:
+    types:
+      - closed
+    branches:
+      - master
 
 jobs:
   check-version:
@@ -35,15 +38,10 @@ jobs:
       # Tag ist NICHT GPG-signiert (CI hat keinen privaten Schlüssel) -
       # anders als die manuell per `git tag -s` gesetzten Tags bisher.
       - name: Tag und GitHub-Release anlegen
+        uses: anothrNick/github-tag-action@1.75.0
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.check-version.outputs.tag }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "$TAG"
-          git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --generate-notes
+          GITHUB_TOKEN: ${{ github.token }}
+          CUSTOM_TAG: ${{ needs.check-version.outputs.tag }}
 
   publish:
     needs: [check-version, tag-and-release]
