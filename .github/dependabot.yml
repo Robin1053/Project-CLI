@@ -1,12 +1,12 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"        # gilt auch für pnpm und yarn
+  - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
       all-deps:
-        patterns: ["*"]             # alles in einem PR statt einem PR pro Paket
+        patterns: ["*"] # alles in einem PR statt einem PR pro Paket
 
   - package-ecosystem: "github-actions"
     directory: "/"
