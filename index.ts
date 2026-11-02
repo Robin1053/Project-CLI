@@ -9,6 +9,7 @@ import { execa } from "execa";
 import { simpleGit, CheckRepoActions } from "simple-git";
 import Conf from "conf";
 import { Entry } from "@napi-rs/keyring";
+import { realpathSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // 1. Stack-Definitionen
@@ -179,7 +180,8 @@ async function resolveGiteaCredentials(): Promise<
 > {
   // Leerer String zählt als "nicht vorhanden" (z.B. ein früherer Lauf hat
   // versehentlich "" gespeichert) -> nicht nur auf null/undefined prüfen.
-  const existingUrl = process.env.GITEA_URL || config.get("giteaUrl") || undefined;
+  const existingUrl =
+    process.env.GITEA_URL || config.get("giteaUrl") || undefined;
   const baseUrl =
     existingUrl ??
     (await askText("Gitea-URL (z.B. https://gitea.example.com)"));
@@ -204,7 +206,9 @@ async function resolveGiteaCredentials(): Promise<
 // statt erst nach Scaffold + erstem Commit bei der Remote-Erstellung.
 const PROJECT_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
-export function validateProjectName(name: string | undefined): string | undefined {
+export function validateProjectName(
+  name: string | undefined,
+): string | undefined {
   if (!name?.trim()) return "Name darf nicht leer sein";
   if (!PROJECT_NAME_PATTERN.test(name)) {
     return "Name darf nur Buchstaben, Ziffern, '-', '_' und '.' enthalten (muss mit Buchstabe/Ziffer beginnen und enden)";
@@ -246,7 +250,10 @@ async function restoreGitignore(targetDir: string) {
   await fs.rename(from, to).catch(() => {});
 }
 
-export async function replacePlaceholders(dir: string, vars: Record<string, string>) {
+export async function replacePlaceholders(
+  dir: string,
+  vars: Record<string, string>,
+) {
   const entries = await fs.readdir(dir, {
     withFileTypes: true,
     recursive: true,
@@ -281,7 +288,10 @@ export async function replacePlaceholders(dir: string, vars: Record<string, stri
 // umbenannten) Inhalt an die neue Stelle verschoben, bevor wir tiefer
 // absteigen. Eine vorab gesammelte Pfadliste würde hier stale werden,
 // sobald ein Vorfahre umbenannt ist.
-async function renamePlaceholderPaths(dir: string, vars: Record<string, string>) {
+async function renamePlaceholderPaths(
+  dir: string,
+  vars: Record<string, string>,
+) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -528,7 +538,17 @@ program
 // interaktive CLI anwirft — nur wenn die Datei direkt ausgeführt wird.
 // pathToFileURL() statt string-Vergleich mit process.argv[1], weil das auf
 // Windows sonst an Backslashes/URL-Encoding scheitert.
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+function isDirectRun(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectRun()) {
   program.parseAsync().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
     process.exit(1);
