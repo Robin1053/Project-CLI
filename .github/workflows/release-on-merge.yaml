@@ -1,14 +1,25 @@
-name: Release on version bump
+name: Release on merge
+
+# Nach dem Merge einer PR in master: Wenn package.json hoeher ist als der
+# letzte Tag, wird Tag + GitHub-Release angelegt und auf npm + GitHub
+# Packages veroeffentlicht. Die Version selbst setzt vorher version-bump.yaml
+# im PR-Branch.
 
 "on":
   pull_request:
-    types:
-      - closed
-    branches:
-      - master
+    types: [closed]
+    branches: [master]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   check-version:
+    # Nur echte Merges, geschlossene PRs ohne Merge loesen nichts aus.
+    if: >-
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'no-release')
     runs-on: ubuntu-latest
     outputs:
       higher: ${{ steps.compare.outputs.higher }}
@@ -16,31 +27,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
           fetch-tags: true
 
       - uses: ./.github/actions/compare-version
         id: compare
 
-  tag-and-release:
+  release:
     needs: check-version
     if: needs.check-version.outputs.higher == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-
       - name: Tag und GitHub-Release anlegen
-        uses: anothrNick/github-tag-action@1.75.0
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          CUSTOM_TAG: ${{ needs.check-version.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.check-version.outputs.tag }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: gh release create "$TAG" --target "$SHA" --title "$TAG" --generate-notes
 
   publish:
-    needs: [check-version, tag-and-release]
+    needs: [check-version, release]
     permissions:
       contents: read
       id-token: write
       packages: write
     uses: ./.github/workflows/publish.yaml
+    with:
+      ref: ${{ needs.check-version.outputs.tag }}
