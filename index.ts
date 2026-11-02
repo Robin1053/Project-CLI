@@ -496,7 +496,7 @@ async function run(nameArg: string | undefined, opts: { private?: boolean }) {
 const program = new Command();
 
 program
-  .name("myinit")
+  .name("project-cli")
   .description("Legt neue Projekte inkl. Repo an")
   .argument("[name]", "Projektname")
   .option("-p, --private", "Remote-Repo privat anlegen")
