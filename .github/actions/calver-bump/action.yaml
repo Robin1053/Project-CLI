@@ -1,0 +1,77 @@
+name: CalVer bump
+description: >
+  Berechnet die naechste CalVer-Version (JJJJ.M.patch) ausgehend vom letzten
+  Release-Tag und schreibt sie in package.json und package-lock.json.
+  Committet NICHT selbst. Setzt voraus, dass der Aufrufer mit fetch-depth 0
+  und fetch-tags ausgecheckt hat.
+
+  Weil immer vom letzten Tag aus gerechnet wird (nicht von package.json), ist
+  die Action idempotent: erneute Laeufe auf derselben PR bumpen nie doppelt.
+  Mit skip=true wird die Version auf den letzten Tag zurueckgesetzt.
+
+inputs:
+  tag-prefix:
+    description: Prefix der Release-Tags
+    default: V
+  timezone:
+    description: Zeitzone, in der der Monatswechsel gilt
+    default: Europe/Berlin
+  skip:
+    description: '"true" = kein Release, Version bleibt auf dem letzten Tag'
+    default: "false"
+
+outputs:
+  previous:
+    description: Version des letzten Release-Tags
+    value: ${{ steps.target.outputs.previous }}
+  version:
+    description: Neue Version (bei skip = letzter Tag)
+    value: ${{ steps.target.outputs.version }}
+  tag:
+    description: Tag-Name der neuen Version
+    value: ${{ inputs.tag-prefix }}${{ steps.target.outputs.version }}
+  changed:
+    description: '"true", wenn package.json geaendert wurde'
+    value: ${{ steps.write.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Neue Version berechnen
+      id: target
+      shell: bash
+      env:
+        PREFIX: ${{ inputs.tag-prefix }}
+        SKIP: ${{ inputs.skip }}
+        TZ: ${{ inputs.timezone }}
+        CALVER: ${{ github.workspace }}/.github/scripts/calver.mjs
+      run: |
+        PREVIOUS=$(node "$CALVER" latest "$PREFIX")
+        if [ "$SKIP" = "true" ]; then
+          VERSION="$PREVIOUS"
+        else
+          VERSION=$(node "$CALVER" next "$PREVIOUS")
+        fi
+        echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Letzter Tag: $PREFIX$PREVIOUS -> neue Version: $VERSION"
+
+    - name: Version in package.json schreiben
+      id: write
+      shell: bash
+      env:
+        VERSION: ${{ steps.target.outputs.version }}
+      run: |
+        CURRENT=$(node -p "require('./package.json').version")
+        if [ "$CURRENT" != "$VERSION" ]; then
+          # Aktualisiert package.json und package-lock.json, ohne Commit/Tag.
+          npm version "$VERSION" --no-git-tag-version --allow-same-version --ignore-scripts
+        fi
+
+        if git diff --quiet; then
+          echo "package.json steht schon auf $VERSION, nichts zu tun."
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        else
+          git diff --stat
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi

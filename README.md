@@ -114,8 +114,15 @@ Es gibt noch keine Tests.
 
 ### Veröffentlichen
 
-`.github/workflows/publish.yaml` läuft bei jedem GitHub Release (`types:
-[published]`) und veröffentlicht die gebaute Version zweimal parallel:
+Releases laufen vollautomatisch über PRs auf `master`, versioniert nach
+CalVer `JJJJ.M.patch` (Tags `V2026.11.0`, `V2026.11.1`, …; Monat ohne
+führende Null, sonst wäre es kein gültiges SemVer für npm):
+
+1. `version-bump.yaml` setzt bei jeder PR die nächste Version in
+   `package.json` und pusht den Bump-Commit in den PR-Branch. Gleicher Monat
+   wie der letzte Tag → `patch + 1`, neuer Monat → `JJJJ.M.0`.
+2. `release-on-merge.yaml` legt nach dem Merge Tag + GitHub Release an und
+   ruft `publish.yaml` auf, das die Version zweimal parallel veröffentlicht:
 
 - als `@robineb/project-cli` auf npmjs.com via **Trusted Publishing** (OIDC) –
   kein Secret im Repo, npm tauscht den GitHub-Actions-OIDC-Token automatisch
@@ -136,9 +143,9 @@ npm publish
 npm trust github --allow-publish --file publish.yaml
 ```
 
-Ablauf für jede weitere Version: `version` in `package.json` erhöhen,
-committen, Git-Tag + GitHub Release mit dieser Version anlegen – der
-Workflow übernimmt den Rest.
+PRs mit dem Label `no-release` werden nicht gebumpt und nicht
+veröffentlicht. Dependabot-PRs werden ebenfalls nicht gebumpt (Read-only-Token);
+ihre Updates landen im nächsten regulären Release.
 
 ## Lizenz
 

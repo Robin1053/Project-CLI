@@ -1,0 +1,69 @@
+name: Version bump
+
+# Setzt bei jeder PR auf master automatisch die naechste CalVer-Version
+# (JJJJ.M.patch) in package.json und pusht den Bump-Commit in den PR-Branch.
+# Gleicher Monat wie der letzte Tag -> patch + 1, neuer Monat -> JJJJ.M.0.
+# Mit dem Label "no-release" wird nichts gebumpt (Version = letzter Tag).
+
+"on":
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: version-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # Dependabot-PRs bekommen nur ein Read-only-Token und koennen nicht in
+    # ihren Branch pushen -> dort wird nicht gebumpt, also auch nicht released.
+    # Das naechste normale PR nimmt die Dependency-Updates mit ins Release.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fork-PRs koennen nicht beschrieben werden
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::PR kommt aus einem Fork. Bitte die Version manuell setzen."
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+          # Optional: Secret RELEASE_TOKEN (PAT / App-Token) anlegen, damit der
+          # Bump-Commit die CI erneut ausloest. Mit github.token passiert das nicht.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - uses: ./.github/actions/calver-bump
+        id: bump
+        with:
+          skip: ${{ contains(github.event.pull_request.labels.*.name, 'no-release') }}
+
+      - name: Bump committen und in den PR-Branch pushen
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): $TAG"
+          git push origin "HEAD:$BRANCH"
+
+      - name: Zusammenfassung
+        env:
+          PREVIOUS: ${{ steps.bump.outputs.previous }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          {
+            echo "### Version bump"
+            echo "| Letzter Tag | Neue Version |"
+            echo "|---|---|"
+            echo "| $PREVIOUS | $VERSION |"
+          } >> "$GITHUB_STEP_SUMMARY"
